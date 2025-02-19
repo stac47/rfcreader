@@ -30,13 +30,29 @@
 
 ;;; Code:
 
-(defvar rfcreader--version "0.1.0"
+(require 'dom)
+(require 'eieio)
+
+(defconst rfcreader--version "0.1.0"
   "Current version of the rfcreader package.")
+
+(defconst rfcreader--site-url "https://www.ietf.org"
+  "Site URL where the RFCs are downloaded from.")
 
 (defcustom rfcreader-repository "/tmp/rfcreader"
   "Path to the directory that stores all the RFCs."
   :type '(string)
   :group 'rfcreader)
+
+(defclass rfcreader-rfc-descriptor ()
+  ((title
+    :initarg :title)
+   (author
+    :initarg :author)
+   (year
+    :initarg :year)
+   (doc-id
+    :initarg :doc-id)))
 
 (defun rfcreader-version ()
   "Return the current version of the rfcreader package."
@@ -49,6 +65,10 @@
     (make-directory rfcreader-repository))
   rfcreader-repository)
 
+(defun rfcreader--rfc-index-path ()
+  "Return the path to the RFC index."
+  (format "%s/rfc-index.xml" (rfcreader--repository)))
+
 (defun rfcreader--rfc-filename(id)
   "Return the RFC filename identified with ID."
   (format "rfc%i.txt" id))
@@ -56,11 +76,89 @@
 (defun rfcreader--download (id)
   "Download the RFC identified with the ID identifier as a text file."
   (let* ((filename (rfcreader--rfc-filename id))
-        (src (concat "https://www.rfc-editor.org/rfc/" filename))
-        (dst (concat (rfcreader--repository) "/" filename)))
+         (src (format "%s/rfc/%s" rfcreader--site-url filename))
+         (dst (format "%s/%s" (rfcreader--repository) filename)))
     (condition-case nil
         (url-copy-file src dst)
       (file-already-exists (message "RFC already present")))))
+
+(defun rfcreader--download-index (force)
+  "Download the index in HTML format if needed.
+
+If FORCE is t, force the download."
+  (let* ((src (format "%s/rfc/rfc-index.xml" rfcreader--site-url))
+         (dst (rfcreader--rfc-index-path)))
+    (when (and force (file-exists-p dst))
+      (delete-file dst))
+    (unless (file-exists-p dst)
+      (url-copy-file src dst))
+    dst))
+
+(defun rfcreader--parse-index-xml (index-xml)
+  "Parse the raw index XML file which filename is INDEX-XML."
+  (with-temp-buffer
+    (insert-file-contents index-xml)
+    (libxml-parse-xml-region)))
+
+(defun rfcreader--format-title (title)
+  "Format the TITLE for the tabulated view."
+  title)
+
+(defun rfcreader--format-doc-id (doc-id)
+  "Format the DOC-ID for the tabulated view."
+  (substring doc-id 3))
+
+(defun rfcreader--dom-first-text-at(node path)
+  "Return the first text value at PATH in the given NODE."
+  (let ((current-node node))
+    (dolist (elt path)
+      (setq current-node (dom-by-tag node elt)))
+    (dom-text current-node)))
+
+(defun rfcreader--rfc-entry-to-rfc-descriptor (node)
+  "Build an \"rfcreader-rfc-descriptor\"from the DOM's NODE."
+  (let ((doc-id (rfcreader--dom-first-text-at node '(doc-id)))
+        (title (rfcreader--dom-first-text-at node '(title)))
+        (year (rfcreader--dom-first-text-at node '(date year)))
+        (author (rfcreader--dom-first-text-at node '(author name))))
+    (make-instance 'rfcreader-rfc-descriptor
+                   :title (rfcreader--format-title title)
+                   :doc-id (rfcreader--format-doc-id doc-id)
+                   :year year
+                   :author author)))
+
+(defun rfcreader--build-rfc-descriptors (dom)
+  "Build a list of \"rfcreader-rfc-descriptor\" from the XML DOM."
+  (let* ((rfcs (dom-by-tag dom 'rfc-entry)))
+    (mapcar #'rfcreader--rfc-entry-to-rfc-descriptor rfcs)))
+
+(defun rfcreader--refresh-index (rfcs)
+  "Prepare the list of RFCS for the tabulated view."
+  (setq tabulated-list-entries nil)
+  (dolist (rfc rfcs)
+    (let ((doc-id (oref rfc doc-id)))
+      (push (list doc-id
+                  (vector
+                   doc-id
+                   (oref rfc title)
+                   (oref rfc author)
+                   (oref rfc year)))
+            tabulated-list-entries))))
+
+(defun rfcreader-index ()
+  "Display the RFCs index."
+  (interactive)
+  (let* ((index-xml (rfcreader--download-index nil))
+         (dom (rfcreader--parse-index-xml index-xml))
+         (rfcs (rfcreader--build-rfc-descriptors dom))
+         (buffer (get-buffer-create "*RFCs Index*")))
+    (with-current-buffer buffer
+      (rfcreader-index-mode)
+      (rfcreader--refresh-index rfcs)
+      (tabulated-list-init-header)
+      (tabulated-list-print))
+    (display-buffer buffer))
+  nil)
 
 (defun rfcreader-open (id)
   "Open an RFC identified with its ID in a new buffer.
@@ -85,6 +183,15 @@ If the RFC is not in the RFCs repository, it is downloaded."
 (define-derived-mode rfcreader-mode special-mode "Rfc-Reader"
   "Rfcreader mode provides some facilities to read RFCs."
   (setq-local font-lock-defaults '(rfcreader-mode-font-lock-keywords t t)))
+
+(define-derived-mode rfcreader-index-mode tabulated-list-mode "RFC Index"
+  "Major mode for listing the published RFCs."
+  (setq tabulated-list-format
+        [("ID" 5 t)
+         ("Title" 60 t)
+         ("Author" 12 t)
+         ("Year" 4 t)])
+  (setq tabulated-list-sort-key (cons "ID" nil)))
 
 (provide 'rfcreader)
 

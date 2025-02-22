@@ -32,12 +32,16 @@
 
 (require 'rfcreader)
 
-(defconst rfcreader-test--index-xml "fixtures/rfc-index.xml"
+(defconst rfcreader-test--index-xml "test/fixtures/rfc-index.xml"
   "Location of the HTML index.")
 
 (defun rfcreader-test--parse-index ()
   "Open the index html fixture."
   (rfcreader--parse-index-xml rfcreader-test--index-xml))
+
+(ert-deftest doc-id-format ()
+  (should (equal 47 (rfcreader--parse-doc-id "RFC0047")))
+   (should (equal 9990 (rfcreader--parse-doc-id "RFC9990"))))
 
 (ert-deftest extract-rfc-index ()
   (let* ((root (rfcreader-test--parse-index))
@@ -47,9 +51,9 @@
 (ert-deftest rfc-descriptor-class ()
   (let ((desc (make-instance 'rfcreader-rfc-descriptor
                              :title "The Title"
-                             :doc-id "RFC0000")))
-    (should (string-equal (oref desc title) "The Title"))
-    (should (string-equal (oref desc doc-id) "RFC0000"))))
+                             :id 42)))
+    (should (equal (oref desc title) "The Title"))
+    (should (equal (oref desc id) 42))))
 
 (provide 'rfcreader-test)
 

@@ -51,8 +51,8 @@
     :initarg :author)
    (year
     :initarg :year)
-   (doc-id
-    :initarg :doc-id)))
+   (id
+    :initarg :id)))
 
 (defun rfcreader-version ()
   "Return the current version of the rfcreader package."
@@ -104,9 +104,9 @@ If FORCE is t, force the download."
   "Format the TITLE for the tabulated view."
   title)
 
-(defun rfcreader--format-doc-id (doc-id)
+(defun rfcreader--parse-doc-id (doc-id)
   "Format the DOC-ID for the tabulated view."
-  (substring doc-id 3))
+  (string-to-number (string-trim-left doc-id "RFC0*")))
 
 (defun rfcreader--dom-first-text-at(node path)
   "Return the first text value at PATH in the given NODE."
@@ -122,8 +122,8 @@ If FORCE is t, force the download."
         (year (rfcreader--dom-first-text-at node '(date year)))
         (author (rfcreader--dom-first-text-at node '(author name))))
     (make-instance 'rfcreader-rfc-descriptor
-                   :title (rfcreader--format-title title)
-                   :doc-id (rfcreader--format-doc-id doc-id)
+                   :title title
+                   :id (rfcreader--parse-doc-id doc-id)
                    :year year
                    :author author)))
 
@@ -136,10 +136,10 @@ If FORCE is t, force the download."
   "Prepare the list of RFCS for the tabulated view."
   (setq tabulated-list-entries nil)
   (dolist (rfc rfcs)
-    (let ((doc-id (oref rfc doc-id)))
+    (let ((doc-id (oref rfc id)))
       (push (list doc-id
                   (vector
-                   doc-id
+                   (number-to-string doc-id)
                    (oref rfc title)
                    (oref rfc author)
                    (oref rfc year)))
@@ -184,6 +184,19 @@ If the RFC is not in the RFCs repository, it is downloaded."
   "Rfcreader mode provides some facilities to read RFCs."
   (setq-local font-lock-defaults '(rfcreader-mode-font-lock-keywords t t)))
 
+(defun rfcreader--open-at-point ()
+  "Open the RFC at point."
+  (interactive)
+  (save-excursion
+    (beginning-of-line)
+    (if (looking-at "^[[:space:]]*\\([[:digit:]]+\\)")
+        (rfcreader-open (string-to-number (match-string 1))))))
+
+(defvar-keymap rfcreader-index-mode-map
+  :parent special-mode-map
+  :doc "Keymap for rfcindex."
+  "RET" #'rfcreader--open-at-point)
+
 (define-derived-mode rfcreader-index-mode tabulated-list-mode "RFC Index"
   "Major mode for listing the published RFCs."
   (setq tabulated-list-format
@@ -191,7 +204,7 @@ If the RFC is not in the RFCs repository, it is downloaded."
          ("Title" 60 t)
          ("Author" 12 t)
          ("Year" 4 t)])
-  (setq tabulated-list-sort-key (cons "ID" nil)))
+  (setq tabulated-list-sort-key nil))
 
 (provide 'rfcreader)
 

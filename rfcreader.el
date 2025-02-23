@@ -39,7 +39,7 @@
 (defconst rfcreader--site-url "https://www.ietf.org"
   "Site URL where the RFCs are downloaded from.")
 
-(defcustom rfcreader-repository "/tmp/rfcreader"
+(defcustom rfcreader-repository (format "%srfcreader" user-emacs-directory)
   "Path to the directory that stores all the RFCs."
   :type '(string)
   :group 'rfcreader)

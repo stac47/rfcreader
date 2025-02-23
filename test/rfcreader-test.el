@@ -5,7 +5,7 @@
 ;; Version: 0.1
 ;; Package-Requires: (dependencies)
 ;; Homepage: homepage
-;; Keywords: keywords
+;; Keywords: rfc
 
 
 ;; This file is not part of GNU Emacs
@@ -26,27 +26,33 @@
 
 ;;; Commentary:
 
-;; commentary
+;; Tests for rfcreader package.
 
 ;;; Code:
 
 (require 'rfcreader)
 
-(defconst rfcreader-test--index-xml "test/fixtures/rfc-index.xml"
+(defun rfcreader-test-fixture-absolute-path ()
+  "Return the absolute path of the fixtures directory."
+  (if-let (current-file load-file-name)
+      (file-name-concat (file-name-directory current-file) "fixtures")
+    (file-name-concat default-directory "fixtures")))
+
+(defconst rfcreader-test--index-xml
+  (file-name-concat (rfcreader-test-fixture-absolute-path) "rfc-index.xml")
   "Location of the HTML index.")
 
 (defun rfcreader-test--parse-index ()
   "Open the index html fixture."
   (rfcreader--parse-index-xml rfcreader-test--index-xml))
 
-(ert-deftest doc-id-format ()
-  (should (equal 47 (rfcreader--parse-doc-id "RFC0047")))
-   (should (equal 9990 (rfcreader--parse-doc-id "RFC9990"))))
+(defconst rfcreader-test-index-root (rfcreader-test--parse-index)
+  "Index XML root node.")
 
-(ert-deftest extract-rfc-index ()
-  (let* ((root (rfcreader-test--parse-index))
-         (rfcs (dom-by-tag root 'rfc-entry)))
-    (should (> (length rfcs) 9500))))
+(ert-deftest build-rfc-descriptors ()
+  (let ((rfcs (rfcreader--build-rfc-descriptors rfcreader-test-index-root)))
+    (should (equal (length rfcs) 3))
+    (should (equal (oref (car rfcs) id) 1))))
 
 (ert-deftest rfc-descriptor-class ()
   (let ((desc (make-instance 'rfcreader-rfc-descriptor
@@ -54,6 +60,10 @@
                              :id 42)))
     (should (equal (oref desc title) "The Title"))
     (should (equal (oref desc id) 42))))
+
+(ert-deftest doc-id-format ()
+  (should (equal 47 (rfcreader--parse-doc-id "RFC0047")))
+  (should (equal 9990 (rfcreader--parse-doc-id "RFC9990"))))
 
 (provide 'rfcreader-test)
 

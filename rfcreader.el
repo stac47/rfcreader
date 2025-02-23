@@ -94,15 +94,11 @@ If FORCE is t, force the download."
       (url-copy-file src dst))
     dst))
 
-(defun rfcreader--parse-index-xml (index-xml)
-  "Parse the raw index XML file which filename is INDEX-XML."
+(defun rfcreader--parse-index-xml (xml-file)
+  "Parse the raw index XML file which filename is XML-FILE."
   (with-temp-buffer
-    (insert-file-contents index-xml)
+    (insert-file-contents xml-file)
     (libxml-parse-xml-region)))
-
-(defun rfcreader--format-title (title)
-  "Format the TITLE for the tabulated view."
-  title)
 
 (defun rfcreader--parse-doc-id (doc-id)
   "Format the DOC-ID for the tabulated view."
@@ -136,14 +132,29 @@ If FORCE is t, force the download."
   "Prepare the list of RFCS for the tabulated view."
   (setq tabulated-list-entries nil)
   (dolist (rfc rfcs)
-    (let ((doc-id (oref rfc id)))
+    (let* ((doc-id (oref rfc id))
+           (doc-id-str (number-to-string doc-id)))
+      (put-text-property 0 (length doc-id-str) 'rfc-id doc-id-str doc-id-str)
       (push (list doc-id
                   (vector
-                   (number-to-string doc-id)
+                   doc-id-str
                    (oref rfc title)
                    (oref rfc author)
                    (oref rfc year)))
             tabulated-list-entries))))
+
+(defun rfcreader--open-at-point ()
+  "Open the RFC at point."
+  (if-let ((id (get-text-property (point) 'rfc-id)))
+      (rfcreader-open (string-to-number id))
+    (message "No RFC id found at point")))
+
+(defun rfcreader--open-rfc-from-current-index-line ()
+  "Open the RFC from the current line of the index view."
+  (interactive)
+  (save-excursion
+    (beginning-of-line)
+    (rfcreader--open-at-point)))
 
 (defun rfcreader-index ()
   "Display the RFCs index."
@@ -184,18 +195,10 @@ If the RFC is not in the RFCs repository, it is downloaded."
   "Rfcreader mode provides some facilities to read RFCs."
   (setq-local font-lock-defaults '(rfcreader-mode-font-lock-keywords t t)))
 
-(defun rfcreader--open-at-point ()
-  "Open the RFC at point."
-  (interactive)
-  (save-excursion
-    (beginning-of-line)
-    (if (looking-at "^[[:space:]]*\\([[:digit:]]+\\)")
-        (rfcreader-open (string-to-number (match-string 1))))))
-
 (defvar-keymap rfcreader-index-mode-map
   :parent special-mode-map
   :doc "Keymap for rfcindex."
-  "RET" #'rfcreader--open-at-point)
+  "RET" #'rfcreader--open-rfc-from-current-index-line)
 
 (define-derived-mode rfcreader-index-mode tabulated-list-mode "RFC Index"
   "Major mode for listing the published RFCs."
